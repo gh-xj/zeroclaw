@@ -115,17 +115,34 @@ Expected publish outputs:
 
 ### 5.1) Generate release report draft
 
-Generate a markdown summary and source appendix from the release commit window:
+Range semantics:
+
+- The generator uses git range `--from..--to`.
+- `--from` is exclusive and `--to` is inclusive.
+- For a specific released version, use previous release tag -> current release tag.
+
+Release-scope example (recommended for published release notes):
 
 ```bash
 python3 scripts/release/generate_release_report.py \
-  --from vX.Y.Z \
-  --to HEAD \
-  --out artifacts/vX.Y.Z-release-report.md \
-  --sources-json artifacts/vX.Y.Z-release-report.sources.json
+  --from v1.9.0 \
+  --to v2.0.0 \
+  --out artifacts/v2.0.0-release-report.md \
+  --sources-json artifacts/v2.0.0-release-report.sources.json
 ```
 
-Use `--override-json` when maintainers need to force specific commit titles into the highlights section:
+Draft/in-progress example (for unreleased notes):
+
+```bash
+python3 scripts/release/generate_release_report.py \
+  --from v2.0.0 \
+  --to HEAD \
+  --out artifacts/v2.1.0-draft-release-report.md \
+  --sources-json artifacts/v2.1.0-draft-release-report.sources.json
+```
+
+Use `--override-json` when maintainers need to force specific commit titles into the highlights section.
+`must_include` matching is exact title match (case-sensitive after trim), and unmatched titles are ignored.
 
 ```json
 {
@@ -137,17 +154,17 @@ Use `--override-json` when maintainers need to force specific commit titles into
 
 ```bash
 python3 scripts/release/generate_release_report.py \
-  --from vX.Y.Z \
-  --to HEAD \
-  --out artifacts/vX.Y.Z-release-report.md \
-  --sources-json artifacts/vX.Y.Z-release-report.sources.json \
-  --override-json artifacts/vX.Y.Z-release-report.override.json
+  --from v1.9.0 \
+  --to v2.0.0 \
+  --out artifacts/v2.0.0-release-report.md \
+  --sources-json artifacts/v2.0.0-release-report.sources.json \
+  --override-json artifacts/v2.0.0-release-report.override.json
 ```
 
 Expected outputs:
 
-- `artifacts/vX.Y.Z-release-report.md`
-- `artifacts/vX.Y.Z-release-report.sources.json`
+- `artifacts/v2.0.0-release-report.md`
+- `artifacts/v2.0.0-release-report.sources.json`
 
 ### 5.2) Canary gate before broad rollout
 
