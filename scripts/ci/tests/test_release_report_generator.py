@@ -327,6 +327,76 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertTrue(second["security"])
         self.assertTrue(second["breaking"])
 
+    def test_override_json_forces_must_include_title_into_highlights(self) -> None:
+        repo = init_temp_git_repo(self.tmp / "override-highlights")
+        must_include_title = "docs: update maintainer onboarding wording"
+        make_commit(repo, must_include_title, "misc.txt")
+        make_commit(repo, "chore(ci): tighten release pipeline checks", "ci.txt")
+        make_commit(repo, "feat(tool): improve web_fetch timeout behavior", "tools.txt")
+        make_commit(repo, "fix(memory): qdrant scheduler drift handling", "memory.txt")
+        make_commit(repo, "fix(channel): stabilize telegram conversation routing", "channel.txt")
+        make_commit(repo, "fix(provider): tune openai retry behavior", "provider.txt")
+        make_commit(repo, "feat(security): harden prompt guard defaults", "security.txt")
+
+        baseline_out = repo / "artifacts" / "report.baseline.md"
+        baseline_proc = run_cmd(
+            [
+                "python3",
+                self._script(),
+                "--from",
+                "HEAD~7",
+                "--to",
+                "HEAD",
+                "--out",
+                str(baseline_out),
+            ],
+            cwd=repo,
+        )
+        self.assertEqual(baseline_proc.returncode, 0, msg=baseline_proc.stderr)
+        baseline_body = baseline_out.read_text(encoding="utf-8")
+        baseline_highlights = baseline_body.split("## Highlights", 1)[1].split(
+            "## Detailed Breakdown",
+            1,
+        )[0]
+        self.assertNotIn(must_include_title, baseline_highlights)
+
+        override_path = repo / "override.json"
+        override_path.write_text(
+            json.dumps({"must_include": [must_include_title]}),
+            encoding="utf-8",
+        )
+
+        override_out = repo / "artifacts" / "report.override.md"
+        override_sources = repo / "artifacts" / "report.override.sources.json"
+        override_proc = run_cmd(
+            [
+                "python3",
+                self._script(),
+                "--from",
+                "HEAD~7",
+                "--to",
+                "HEAD",
+                "--out",
+                str(override_out),
+                "--sources-json",
+                str(override_sources),
+                "--override-json",
+                str(override_path),
+            ],
+            cwd=repo,
+        )
+        self.assertEqual(override_proc.returncode, 0, msg=override_proc.stderr)
+        override_body = override_out.read_text(encoding="utf-8")
+        override_highlights = override_body.split("## Highlights", 1)[1].split(
+            "## Detailed Breakdown",
+            1,
+        )[0]
+        self.assertIn(must_include_title, override_highlights)
+
+        payload = json.loads(override_sources.read_text(encoding="utf-8"))
+        self.assertIn("changes", payload)
+        self.assertIn("grouped", payload)
+
     def test_breaking_detection_handles_negated_and_positive_phrases(self) -> None:
         repo = init_temp_git_repo(self.tmp / "breaking-boundary")
         non_hyphen_sha = make_commit(

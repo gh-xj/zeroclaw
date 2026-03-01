@@ -222,11 +222,81 @@ def iter_grouped_changes(
     return flattened
 
 
+def load_override(path: str | None) -> dict[str, object]:
+    if not path:
+        return {}
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("override schema is invalid")
+
+    normalized: dict[str, object] = {}
+    if "must_include" not in raw:
+        return normalized
+
+    must_include = raw.get("must_include")
+    if not isinstance(must_include, list):
+        raise ValueError("override must_include must be a list")
+
+    normalized["must_include"] = [
+        str(item).strip()
+        for item in must_include
+        if str(item).strip()
+    ]
+    return normalized
+
+
+def select_highlights(
+    *,
+    grouped_changes: dict[str, list[dict[str, object]]],
+    changes: list[dict[str, object]],
+    override: dict[str, object],
+    highlight_limit: int = 6,
+) -> list[dict[str, object]]:
+    highlights = iter_grouped_changes(grouped_changes)
+    raw_must_include = override.get("must_include", [])
+    if not isinstance(raw_must_include, list) or not raw_must_include:
+        return highlights[:highlight_limit]
+
+    must_include_titles = [str(item).strip() for item in raw_must_include if str(item).strip()]
+    if not must_include_titles:
+        return highlights[:highlight_limit]
+
+    title_to_change: dict[str, dict[str, object]] = {}
+    for change in changes:
+        title = str(change.get("title", "")).strip()
+        if title and title not in title_to_change:
+            title_to_change[title] = change
+
+    forced: list[dict[str, object]] = []
+    forced_titles: set[str] = set()
+    for title in must_include_titles:
+        matched = title_to_change.get(title)
+        if not matched or title in forced_titles:
+            continue
+        forced.append(matched)
+        forced_titles.add(title)
+
+    if not forced:
+        return highlights[:highlight_limit]
+
+    merged: list[dict[str, object]] = []
+    merged.extend(forced)
+    for change in highlights:
+        title = str(change.get("title", "")).strip()
+        if title in forced_titles:
+            continue
+        merged.append(change)
+
+    return merged[:highlight_limit]
+
+
 def render_markdown(
     *,
     version: str,
     generated_at: str,
     grouped_changes: dict[str, list[dict[str, object]]],
+    highlights: list[dict[str, object]] | None = None,
     highlight_limit: int = 6,
 ) -> str:
     lines: list[str] = []
@@ -238,7 +308,8 @@ def render_markdown(
     lines.append("## Highlights")
     lines.append("")
 
-    highlights = iter_grouped_changes(grouped_changes)[:highlight_limit]
+    if highlights is None:
+        highlights = iter_grouped_changes(grouped_changes)[:highlight_limit]
     if highlights:
         for change in highlights:
             lines.append(f"- {change['title']}")
@@ -283,6 +354,7 @@ def main() -> int:
     parser.add_argument("--to", dest="to_ref", default="HEAD")
     parser.add_argument("--out", required=True)
     parser.add_argument("--sources-json", dest="sources_json")
+    parser.add_argument("--override-json", dest="override_json")
     args = parser.parse_args()
 
     from_ok, from_error = validate_git_ref(args.from_ref)
@@ -313,11 +385,23 @@ def main() -> int:
         print(f"failed to load taxonomy: {error}", file=sys.stderr)
         return EXIT_GIT_FAILURE
 
+    try:
+        override = load_override(args.override_json)
+    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"failed to load override: {error}", file=sys.stderr)
+        return EXIT_GIT_FAILURE
+
     grouped_changes = group_changes(changes, taxonomy)
+    highlights = select_highlights(
+        grouped_changes=grouped_changes,
+        changes=changes,
+        override=override,
+    )
     rendered_markdown = render_markdown(
         version=f"{args.from_ref}..{args.to_ref}",
         generated_at=datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),
         grouped_changes=grouped_changes,
+        highlights=highlights,
     )
 
     out_path = Path(args.out)
