@@ -113,7 +113,43 @@ Expected publish outputs:
 4. Verify GHCR vulnerability gate evidence (`ghcr-vulnerability-gate.json`) reports `ready=true` and that `audit-event-ghcr-vulnerability-gate.json` is present.
 5. Verify install paths that rely on release assets (for example bootstrap binary download).
 
-### 5.1) Canary gate before broad rollout
+### 5.1) Generate release report draft
+
+Generate a markdown summary and source appendix from the release commit window:
+
+```bash
+python3 scripts/release/generate_release_report.py \
+  --from vX.Y.Z \
+  --to HEAD \
+  --out artifacts/vX.Y.Z-release-report.md \
+  --sources-json artifacts/vX.Y.Z-release-report.sources.json
+```
+
+Use `--override-json` when maintainers need to force specific commit titles into the highlights section:
+
+```json
+{
+  "must_include": [
+    "docs: update maintainer onboarding wording"
+  ]
+}
+```
+
+```bash
+python3 scripts/release/generate_release_report.py \
+  --from vX.Y.Z \
+  --to HEAD \
+  --out artifacts/vX.Y.Z-release-report.md \
+  --sources-json artifacts/vX.Y.Z-release-report.sources.json \
+  --override-json artifacts/vX.Y.Z-release-report.override.json
+```
+
+Expected outputs:
+
+- `artifacts/vX.Y.Z-release-report.md`
+- `artifacts/vX.Y.Z-release-report.sources.json`
+
+### 5.2) Canary gate before broad rollout
 
 Run `CI Canary Gate` (`.github/workflows/ci-canary-gate.yml`) in `dry-run` first, then `execute` when metrics are complete.
 
@@ -137,7 +173,7 @@ Abort integration:
 - Default rollback branch is `dev` (override with `rollback_branch`).
 - Optional explicit rollback target can be passed via `rollback_target_ref`.
 
-### 5.2) Pre-release stage progression (alpha/beta/rc/stable policy)
+### 5.3) Pre-release stage progression (alpha/beta/rc/stable policy)
 
 For staged release confidence:
 
