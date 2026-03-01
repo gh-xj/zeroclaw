@@ -151,6 +151,50 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
             ],
         )
 
+    def test_group_changes_avoids_substring_false_positives_for_short_keywords(self) -> None:
+        module = load_release_report_module()
+        taxonomy = module.load_taxonomy(module.DEFAULT_TAXONOMY_PATH)
+
+        changes = [
+            {
+                "title": "fix: improve precision math",
+                "type": "fix",
+                "security": False,
+                "breaking": False,
+            },
+            {
+                "title": "fix: linux packaging issue",
+                "type": "fix",
+                "security": False,
+                "breaking": False,
+            },
+            {
+                "title": "fix(ci): tighten release pipeline checks",
+                "type": "fix",
+                "security": False,
+                "breaking": False,
+            },
+            {
+                "title": "feat: improve ux handoff for channel setup",
+                "type": "feat",
+                "security": False,
+                "breaking": False,
+            },
+        ]
+
+        grouped = module.group_changes(changes, taxonomy)
+
+        ci_titles = [change["title"] for change in grouped.get("CI/Release", [])]
+        channels_titles = [change["title"] for change in grouped.get("Channels & UX", [])]
+        misc_titles = [change["title"] for change in grouped.get("Misc", [])]
+
+        self.assertIn("fix(ci): tighten release pipeline checks", ci_titles)
+        self.assertIn("feat: improve ux handoff for channel setup", channels_titles)
+        self.assertNotIn("fix: improve precision math", ci_titles)
+        self.assertNotIn("fix: linux packaging issue", channels_titles)
+        self.assertIn("fix: improve precision math", misc_titles)
+        self.assertIn("fix: linux packaging issue", misc_titles)
+
     def test_missing_from_tag_returns_exit_2(self) -> None:
         out_path = self.tmp / "missing-from.md"
         proc = run_cmd(

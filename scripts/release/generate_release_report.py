@@ -79,19 +79,28 @@ def group_changes(
     grouped: dict[str, list[dict[str, object]]] = {}
     sections = taxonomy.get("sections", [])
     fallback_section = str(taxonomy.get("fallback_section", "Misc"))
+    section_patterns: list[tuple[str, list[re.Pattern[str]]]] = []
 
     for section in sections:
         section_name = str(section.get("name"))
         grouped[section_name] = []
+        patterns: list[re.Pattern[str]] = []
+        for raw_keyword in section.get("keywords", []):
+            keyword = str(raw_keyword).strip().lower()
+            if not keyword:
+                continue
+            escaped_keyword = re.escape(keyword)
+            # Match keyword boundaries against alphanumeric tokens to avoid
+            # inside-word false positives like "ci" in "precision".
+            patterns.append(re.compile(rf"(?<![a-z0-9]){escaped_keyword}(?![a-z0-9])"))
+        section_patterns.append((section_name, patterns))
     grouped[fallback_section] = []
 
     for change in changes:
         lowered_title = str(change.get("title", "")).lower()
         assigned = False
-        for section in sections:
-            section_name = str(section.get("name"))
-            keywords = [str(keyword).lower() for keyword in section.get("keywords", [])]
-            if any(keyword in lowered_title for keyword in keywords):
+        for section_name, patterns in section_patterns:
+            if any(pattern.search(lowered_title) for pattern in patterns):
                 grouped[section_name].append(change)
                 assigned = True
                 break
