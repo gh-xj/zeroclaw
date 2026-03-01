@@ -21,6 +21,7 @@ BREAKING_CHANGE_PATTERN = re.compile(
     r"^[a-z]+(?:\([^)]+\))?!:|\bbreaking\s+changes?\b",
     re.IGNORECASE,
 )
+NEGATED_BREAKING_PATTERN = re.compile(r"\bnon[-\s]+breaking\b", re.IGNORECASE)
 KNOWN_TYPES = {
     "build",
     "chore",
@@ -88,7 +89,8 @@ def is_security_change(title: str) -> bool:
 
 
 def is_breaking_change(title: str) -> bool:
-    return bool(BREAKING_CHANGE_PATTERN.search(title))
+    sanitized_title = NEGATED_BREAKING_PATTERN.sub("", title)
+    return bool(BREAKING_CHANGE_PATTERN.search(sanitized_title))
 
 
 def collect_changes(from_ref: str, to_ref: str) -> list[dict[str, object]]:

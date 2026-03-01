@@ -190,12 +190,22 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertTrue(second["security"])
         self.assertTrue(second["breaking"])
 
-    def test_nonbreaking_phrase_does_not_set_breaking_flag(self) -> None:
-        repo = init_temp_git_repo(self.tmp / "nonbreaking")
-        commit_sha = make_commit(
+    def test_breaking_detection_handles_negated_and_positive_phrases(self) -> None:
+        repo = init_temp_git_repo(self.tmp / "breaking-boundary")
+        non_hyphen_sha = make_commit(
             repo,
-            "docs: explain nonbreaking changes to release notes",
-            "notes.txt",
+            "docs: clarify non-breaking changes to config defaults",
+            "non_hyphen.txt",
+        )
+        non_space_sha = make_commit(
+            repo,
+            "docs: clarify non breaking changes to config defaults",
+            "non_space.txt",
+        )
+        positive_sha = make_commit(
+            repo,
+            "docs: breaking change in CLI flags",
+            "positive.txt",
         )
 
         out_path = repo / "artifacts" / "report.md"
@@ -205,7 +215,7 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
                 "python3",
                 self._script(),
                 "--from",
-                "HEAD~1",
+                "HEAD~3",
                 "--to",
                 "HEAD",
                 "--out",
@@ -218,11 +228,22 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, msg=proc.stderr)
 
         payload = json.loads(sources_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(payload["changes"]), 1)
-        change = payload["changes"][0]
-        self.assertEqual(change["sha"], commit_sha)
-        self.assertEqual(change["title"], "docs: explain nonbreaking changes to release notes")
-        self.assertFalse(change["breaking"])
+        self.assertEqual(len(payload["changes"]), 3)
+
+        latest = payload["changes"][0]
+        self.assertEqual(latest["sha"], positive_sha)
+        self.assertEqual(latest["title"], "docs: breaking change in CLI flags")
+        self.assertTrue(latest["breaking"])
+
+        middle = payload["changes"][1]
+        self.assertEqual(middle["sha"], non_space_sha)
+        self.assertEqual(middle["title"], "docs: clarify non breaking changes to config defaults")
+        self.assertFalse(middle["breaking"])
+
+        oldest = payload["changes"][2]
+        self.assertEqual(oldest["sha"], non_hyphen_sha)
+        self.assertEqual(oldest["title"], "docs: clarify non-breaking changes to config defaults")
+        self.assertFalse(oldest["breaking"])
 
     def test_init_temp_git_repo_disables_commit_gpg_signing(self) -> None:
         repo = init_temp_git_repo(self.tmp / "gpgsign")
