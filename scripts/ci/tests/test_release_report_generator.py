@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
 import tempfile
 import unittest
+from types import ModuleType
 from pathlib import Path
 
 
@@ -27,6 +29,15 @@ def run_cmd(
         capture_output=True,
         check=False,
     )
+
+
+def load_release_report_module() -> ModuleType:
+    script_path = RELEASE_SCRIPTS_DIR / "generate_release_report.py"
+    spec = importlib.util.spec_from_file_location("generate_release_report", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def init_temp_git_repo(path: Path) -> Path:
@@ -69,6 +80,76 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
 
     def _script(self) -> str:
         return str(RELEASE_SCRIPTS_DIR / "generate_release_report.py")
+
+    def test_load_taxonomy_sections_from_default_file(self) -> None:
+        module = load_release_report_module()
+
+        taxonomy = module.load_taxonomy(module.DEFAULT_TAXONOMY_PATH)
+        section_names = [section["name"] for section in taxonomy["sections"]]
+
+        self.assertEqual(
+            section_names,
+            [
+                "Security",
+                "Provider/Model stack",
+                "Channels & UX",
+                "Memory & Scheduling",
+                "Tools & Agent behavior",
+                "CI/Release",
+            ],
+        )
+        self.assertEqual(taxonomy["fallback_section"], "Misc")
+
+    def test_group_changes_applies_thematic_rules_with_security_priority(self) -> None:
+        module = load_release_report_module()
+        taxonomy = module.load_taxonomy(module.DEFAULT_TAXONOMY_PATH)
+
+        changes = [
+            {
+                "title": "feat(security)!: tighten prompt guard defaults",
+                "type": "security",
+                "security": True,
+                "breaking": True,
+            },
+            {
+                "title": "feat(prompt): block leak vectors in tool outputs",
+                "type": "feat",
+                "security": True,
+                "breaking": False,
+            },
+            {
+                "title": "fix(openai): upgrade provider retries",
+                "type": "fix",
+                "security": False,
+                "breaking": False,
+            },
+            {
+                "title": "fix(telegram): stabilize topic routing",
+                "type": "fix",
+                "security": False,
+                "breaking": False,
+            },
+            {
+                "title": "chore: update internal wording",
+                "type": "chore",
+                "security": False,
+                "breaking": False,
+            },
+        ]
+
+        grouped = module.group_changes(changes, taxonomy)
+
+        self.assertIn("Security", grouped)
+        self.assertIn("Provider/Model stack", grouped)
+        self.assertIn("Channels & UX", grouped)
+        self.assertIn("Misc", grouped)
+        self.assertEqual(
+            [change["title"] for change in grouped["Security"]],
+            [
+                "feat(security)!: tighten prompt guard defaults",
+                "feat(prompt): block leak vectors in tool outputs",
+            ],
+        )
 
     def test_missing_from_tag_returns_exit_2(self) -> None:
         out_path = self.tmp / "missing-from.md"

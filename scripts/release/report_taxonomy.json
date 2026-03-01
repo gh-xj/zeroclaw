@@ -1,0 +1,29 @@
+{
+  "sections": [
+    {
+      "name": "Security",
+      "keywords": ["security", "prompt", "guard", "leak", "harden", "vuln", "cve"]
+    },
+    {
+      "name": "Provider/Model stack",
+      "keywords": ["provider", "model", "openai", "gemini", "novita", "bedrock", "anthropic"]
+    },
+    {
+      "name": "Channels & UX",
+      "keywords": ["channel", "telegram", "discord", "slack", "whatsapp", "wati", "lark", "feishu", "ux", "conversation"]
+    },
+    {
+      "name": "Memory & Scheduling",
+      "keywords": ["memory", "qdrant", "schedule", "scheduler", "cron", "queue"]
+    },
+    {
+      "name": "Tools & Agent behavior",
+      "keywords": ["tool", "agent", "browser", "web_fetch", "web_search", "command", "behavior"]
+    },
+    {
+      "name": "CI/Release",
+      "keywords": ["ci", "release", "pipeline", "artifact", "workflow", "build"]
+    }
+  ],
+  "fallback_section": "Misc"
+}

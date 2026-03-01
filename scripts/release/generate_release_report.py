@@ -11,6 +11,7 @@ from pathlib import Path
 
 EXIT_MISSING_REF = 2
 EXIT_GIT_FAILURE = 3
+DEFAULT_TAXONOMY_PATH = Path(__file__).with_name("report_taxonomy.json")
 
 CONVENTIONAL_TYPE_PATTERN = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?(?:!)?:")
 SECURITY_PATTERN = re.compile(
@@ -35,6 +36,79 @@ KNOWN_TYPES = {
     "style",
     "test",
 }
+
+
+def load_taxonomy(path: Path) -> dict[str, object]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    sections = raw.get("sections")
+    fallback_section = raw.get("fallback_section")
+
+    if not isinstance(sections, list) or not isinstance(fallback_section, str):
+        raise ValueError("taxonomy schema is invalid")
+
+    normalized_sections: list[dict[str, object]] = []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+
+        name = section.get("name")
+        keywords = section.get("keywords")
+        if not isinstance(name, str) or not isinstance(keywords, list):
+            continue
+
+        normalized_sections.append(
+            {
+                "name": name,
+                "keywords": [str(keyword) for keyword in keywords],
+            }
+        )
+
+    if not normalized_sections:
+        raise ValueError("taxonomy contains no valid sections")
+
+    return {
+        "sections": normalized_sections,
+        "fallback_section": fallback_section,
+    }
+
+
+def group_changes(
+    changes: list[dict[str, object]],
+    taxonomy: dict[str, object],
+) -> dict[str, list[dict[str, object]]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    sections = taxonomy.get("sections", [])
+    fallback_section = str(taxonomy.get("fallback_section", "Misc"))
+
+    for section in sections:
+        section_name = str(section.get("name"))
+        grouped[section_name] = []
+    grouped[fallback_section] = []
+
+    for change in changes:
+        lowered_title = str(change.get("title", "")).lower()
+        assigned = False
+        for section in sections:
+            section_name = str(section.get("name"))
+            keywords = [str(keyword).lower() for keyword in section.get("keywords", [])]
+            if any(keyword in lowered_title for keyword in keywords):
+                grouped[section_name].append(change)
+                assigned = True
+                break
+
+        if not assigned:
+            grouped[fallback_section].append(change)
+
+    security_section = grouped.get("Security")
+    if security_section is not None:
+        security_section.sort(
+            key=lambda item: (
+                not bool(item.get("security")),
+                not bool(item.get("breaking")),
+            )
+        )
+
+    return {name: section_changes for name, section_changes in grouped.items() if section_changes}
 
 
 def is_missing_ref_error(stderr: str) -> bool:
@@ -159,6 +233,14 @@ def main() -> int:
         print(f"git failed while collecting changes: {error}", file=sys.stderr)
         return EXIT_GIT_FAILURE
 
+    try:
+        taxonomy = load_taxonomy(DEFAULT_TAXONOMY_PATH)
+    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"failed to load taxonomy: {error}", file=sys.stderr)
+        return EXIT_GIT_FAILURE
+
+    grouped_changes = group_changes(changes, taxonomy)
+
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("# placeholder\n", encoding="utf-8")
@@ -166,7 +248,10 @@ def main() -> int:
     if args.sources_json:
         sources_path = Path(args.sources_json)
         sources_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"changes": changes}
+        payload = {
+            "changes": changes,
+            "grouped": grouped_changes,
+        }
         sources_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
