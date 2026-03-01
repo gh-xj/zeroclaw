@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -212,6 +213,70 @@ def collect_changes(from_ref: str, to_ref: str) -> list[dict[str, object]]:
     return changes
 
 
+def iter_grouped_changes(
+    grouped_changes: dict[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    flattened: list[dict[str, object]] = []
+    for section_changes in grouped_changes.values():
+        flattened.extend(section_changes)
+    return flattened
+
+
+def render_markdown(
+    *,
+    version: str,
+    generated_at: str,
+    grouped_changes: dict[str, list[dict[str, object]]],
+    highlight_limit: int = 6,
+) -> str:
+    lines: list[str] = []
+    lines.append("# ZeroClaw Release Report")
+    lines.append("")
+    lines.append(f"Version: `{version}`")
+    lines.append(f"Generated: `{generated_at}`")
+    lines.append("")
+    lines.append("## Highlights")
+    lines.append("")
+
+    highlights = iter_grouped_changes(grouped_changes)[:highlight_limit]
+    if highlights:
+        for change in highlights:
+            lines.append(f"- {change['title']}")
+    else:
+        lines.append("- No notable changes found in this range.")
+
+    lines.append("")
+    lines.append("## Detailed Breakdown")
+    lines.append("")
+    if grouped_changes:
+        for index, (section_name, section_changes) in enumerate(grouped_changes.items(), start=1):
+            lines.append(f"### {index}. {section_name}")
+            lines.append("")
+            for change in section_changes:
+                lines.append(f"- {change['title']}")
+            lines.append("")
+    else:
+        lines.append("- No categorized changes for this range.")
+        lines.append("")
+
+    lines.append("## Source Appendix")
+    lines.append("")
+    if grouped_changes:
+        for section_name, section_changes in grouped_changes.items():
+            lines.append(f"### {section_name}")
+            lines.append("")
+            for change in section_changes:
+                short_sha = str(change.get("sha", ""))[:8] or "unknown"
+                title = str(change.get("title", "")).strip() or "(untitled)"
+                lines.append(f"- `{short_sha}` {title}")
+            lines.append("")
+    else:
+        lines.append("- No source entries for this range.")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate release report markdown")
     parser.add_argument("--from", dest="from_ref", required=True)
@@ -249,10 +314,15 @@ def main() -> int:
         return EXIT_GIT_FAILURE
 
     grouped_changes = group_changes(changes, taxonomy)
+    rendered_markdown = render_markdown(
+        version=f"{args.from_ref}..{args.to_ref}",
+        generated_at=datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"),
+        grouped_changes=grouped_changes,
+    )
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("# placeholder\n", encoding="utf-8")
+    out_path.write_text(rendered_markdown, encoding="utf-8")
 
     if args.sources_json:
         sources_path = Path(args.sources_json)

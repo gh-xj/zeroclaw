@@ -214,23 +214,35 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertIn("from tag not found", proc.stderr.lower())
         self.assertFalse(out_path.exists())
 
-    def test_valid_refs_write_placeholder_output(self) -> None:
-        out_path = self.tmp / "ok.md"
+    def test_generated_markdown_contains_required_sections(self) -> None:
+        repo = init_temp_git_repo(self.tmp / "markdown-structure")
+        sha = make_commit(repo, "feat(security): harden prompt guard", "security.txt")
+
+        out_path = repo / "artifacts" / "report.md"
         proc = run_cmd(
             [
                 "python3",
                 self._script(),
                 "--from",
-                "HEAD",
+                "HEAD~1",
                 "--to",
                 "HEAD",
                 "--out",
                 str(out_path),
             ],
-            cwd=ROOT,
+            cwd=repo,
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-        self.assertEqual(out_path.read_text(encoding="utf-8"), "# placeholder\n")
+        body = out_path.read_text(encoding="utf-8")
+        self.assertIn("# ZeroClaw Release Report", body)
+        self.assertIn("Version: `HEAD~1..HEAD`", body)
+        self.assertRegex(body, r"Generated:\s+`\d{4}-\d{2}-\d{2}`")
+        self.assertIn("## Highlights", body)
+        self.assertIn("## Detailed Breakdown", body)
+        self.assertIn("## Source Appendix", body)
+        self.assertIn("- feat(security): harden prompt guard", body)
+        self.assertIn("### 1. Security", body)
+        self.assertIn(f"`{sha[:8]}` feat(security): harden prompt guard", body)
 
     def test_invalid_to_ref_returns_exit_2_and_no_output(self) -> None:
         out_path = self.tmp / "missing-to.md"
