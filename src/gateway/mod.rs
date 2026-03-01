@@ -32,7 +32,8 @@ use anyhow::{Context, Result};
 use axum::{
     body::{Body, Bytes},
     extract::{ConnectInfo, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    middleware,
     response::{IntoResponse, Json, Response},
     routing::{delete, get, post, put},
     Router,
@@ -57,6 +58,48 @@ pub const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 pub const RATE_LIMIT_MAX_KEYS_DEFAULT: usize = 10_000;
 /// Fallback max distinct idempotency keys retained in gateway memory.
 pub const IDEMPOTENCY_MAX_KEYS_DEFAULT: usize = 10_000;
+/// Conservative default CSP for API responses.
+const GATEWAY_DEFAULT_CSP: &str =
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+
+fn apply_default_security_headers(headers: &mut HeaderMap) {
+    fn ensure_header(headers: &mut HeaderMap, name: header::HeaderName, value: HeaderValue) {
+        if !headers.contains_key(&name) {
+            headers.insert(name, value);
+        }
+    }
+
+    ensure_header(
+        headers,
+        header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    ensure_header(
+        headers,
+        header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    ensure_header(
+        headers,
+        header::HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static(GATEWAY_DEFAULT_CSP),
+    );
+    ensure_header(
+        headers,
+        header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    ensure_header(
+        headers,
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
+}
+
+async fn inject_default_security_headers(mut response: Response) -> Response {
+    apply_default_security_headers(response.headers_mut());
+    response
+}
 
 fn webhook_memory_key() -> String {
     format!("webhook_msg_{}", Uuid::new_v4())
@@ -830,6 +873,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(REQUEST_TIMEOUT_SECS),
         ))
+        .layer(middleware::map_response(inject_default_security_headers))
         // ── SPA fallback: non-API GET requests serve index.html ──
         .fallback(get(static_files::handle_spa_fallback));
 
@@ -2684,6 +2728,58 @@ mod tests {
     #[test]
     fn security_timeout_is_30_seconds() {
         assert_eq!(REQUEST_TIMEOUT_SECS, 30);
+    }
+
+    #[test]
+    fn default_security_headers_are_injected() {
+        let mut headers = HeaderMap::new();
+        apply_default_security_headers(&mut headers);
+
+        assert_eq!(
+            headers
+                .get("x-content-type-options")
+                .and_then(|value| value.to_str().ok()),
+            Some("nosniff")
+        );
+        assert_eq!(
+            headers
+                .get("x-frame-options")
+                .and_then(|value| value.to_str().ok()),
+            Some("DENY")
+        );
+        assert_eq!(
+            headers
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(GATEWAY_DEFAULT_CSP)
+        );
+        assert_eq!(
+            headers
+                .get("referrer-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("no-referrer")
+        );
+        assert_eq!(
+            headers
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+    }
+
+    #[test]
+    fn default_security_headers_preserve_existing_cache_control() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+
+        apply_default_security_headers(&mut headers);
+
+        assert_eq!(
+            headers
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
     }
 
     #[test]
