@@ -18,7 +18,7 @@ SECURITY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BREAKING_CHANGE_PATTERN = re.compile(
-    r"^[a-z]+(?:\([^)]+\))?!:|breaking\s+change",
+    r"^[a-z]+(?:\([^)]+\))?!:|\bbreaking\s+changes?\b",
     re.IGNORECASE,
 )
 KNOWN_TYPES = {

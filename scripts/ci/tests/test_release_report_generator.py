@@ -39,6 +39,8 @@ def init_temp_git_repo(path: Path) -> Path:
     assert email_proc.returncode == 0, email_proc.stderr
     name_proc = run_cmd(["git", "config", "user.name", "Release Report Tests"], cwd=path)
     assert name_proc.returncode == 0, name_proc.stderr
+    gpgsign_proc = run_cmd(["git", "config", "commit.gpgsign", "false"], cwd=path)
+    assert gpgsign_proc.returncode == 0, gpgsign_proc.stderr
 
     (path / "README.md").write_text("bootstrap\n", encoding="utf-8")
     add_proc = run_cmd(["git", "add", "README.md"], cwd=path)
@@ -187,6 +189,46 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertEqual(second["type"], "security")
         self.assertTrue(second["security"])
         self.assertTrue(second["breaking"])
+
+    def test_nonbreaking_phrase_does_not_set_breaking_flag(self) -> None:
+        repo = init_temp_git_repo(self.tmp / "nonbreaking")
+        commit_sha = make_commit(
+            repo,
+            "docs: explain nonbreaking changes to release notes",
+            "notes.txt",
+        )
+
+        out_path = repo / "artifacts" / "report.md"
+        sources_path = repo / "artifacts" / "report.sources.json"
+        proc = run_cmd(
+            [
+                "python3",
+                self._script(),
+                "--from",
+                "HEAD~1",
+                "--to",
+                "HEAD",
+                "--out",
+                str(out_path),
+                "--sources-json",
+                str(sources_path),
+            ],
+            cwd=repo,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+
+        payload = json.loads(sources_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(payload["changes"]), 1)
+        change = payload["changes"][0]
+        self.assertEqual(change["sha"], commit_sha)
+        self.assertEqual(change["title"], "docs: explain nonbreaking changes to release notes")
+        self.assertFalse(change["breaking"])
+
+    def test_init_temp_git_repo_disables_commit_gpg_signing(self) -> None:
+        repo = init_temp_git_repo(self.tmp / "gpgsign")
+        config_proc = run_cmd(["git", "config", "--local", "--get", "commit.gpgsign"], cwd=repo)
+        self.assertEqual(config_proc.returncode, 0, msg=config_proc.stderr)
+        self.assertEqual(config_proc.stdout.strip(), "false")
 
 
 if __name__ == "__main__":  # pragma: no cover
