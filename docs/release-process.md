@@ -128,6 +128,13 @@ python3 scripts/release/generate_release_report.py \
   --from v1.9.0 \
   --to v2.0.0 \
   --out artifacts/v2.0.0-release-report.md \
+  --appendix-out artifacts/v2.0.0-release-report.appendix.md \
+  --stage-dir artifacts/v2.0.0-release-report.stages \
+  --twitter-out artifacts/v2.0.0-release-twitter.md \
+  --release-version 2.0.0 \
+  --core-dev theonlyhennygod \
+  --core-dev chumyin \
+  --core-dev gh-xj \
   --sources-json artifacts/v2.0.0-release-report.sources.json
 ```
 
@@ -138,16 +145,27 @@ python3 scripts/release/generate_release_report.py \
   --from v2.0.0 \
   --to HEAD \
   --out artifacts/v2.1.0-draft-release-report.md \
+  --appendix-out artifacts/v2.1.0-draft-release-report.appendix.md \
+  --stage-dir artifacts/v2.1.0-draft-release-report.stages \
+  --twitter-out artifacts/v2.1.0-draft-release-twitter.md \
+  --release-version 2.1.0 \
   --sources-json artifacts/v2.1.0-draft-release-report.sources.json
 ```
 
-Use `--override-json` when maintainers need to force specific commit titles into the highlights section.
-`must_include` matching is exact title match (case-sensitive after trim), and unmatched titles are ignored.
+Use `--override-json` when maintainers need release-level curation.
+- `must_include`: force exact commit titles into the highlights payload (exact title match after trim).
+- `must_promote`: force topic terms to appear in concise main-report area bullets (case-insensitive substring match).
+- Main report area bullets are comprehensive (no hard cap); `must_promote` elevates matching topics earlier in each area.
 
 ```json
 {
   "must_include": [
     "docs: update maintainer onboarding wording"
+  ],
+  "must_promote": [
+    "StepFun",
+    "agent swarm",
+    "orchestration"
   ]
 }
 ```
@@ -157,14 +175,25 @@ python3 scripts/release/generate_release_report.py \
   --from v1.9.0 \
   --to v2.0.0 \
   --out artifacts/v2.0.0-release-report.md \
+  --appendix-out artifacts/v2.0.0-release-report.appendix.md \
+  --stage-dir artifacts/v2.0.0-release-report.stages \
+  --twitter-out artifacts/v2.0.0-release-twitter.md \
+  --release-version 2.0.0 \
   --sources-json artifacts/v2.0.0-release-report.sources.json \
   --override-json artifacts/v2.0.0-release-report.override.json
 ```
 
+PR lookup results are cached under `artifacts/v2.0.0-release-report.stages/pr-cache.json` through `--stage-dir` for faster reruns without repeated `gh` API lookups.
+
 Expected outputs:
 
 - `artifacts/v2.0.0-release-report.md`
+- `artifacts/v2.0.0-release-report.appendix.md`
+- `artifacts/v2.0.0-release-twitter.md`
 - `artifacts/v2.0.0-release-report.sources.json`
+- `artifacts/v2.0.0-release-report.stages/01-pre-compound.json` (input checkpoint before compound step)
+- `artifacts/v2.0.0-release-report.stages/02-pre-synthesis.json` (input checkpoint before synthesis step)
+- Main report includes `Community Contributors` plus `Special Thanks: First-Time Contributors` (derived from earliest non-core, non-bot commits in repo history).
 
 ### 5.2) Canary gate before broad rollout
 
