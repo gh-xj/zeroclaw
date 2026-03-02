@@ -99,7 +99,7 @@ jobs:
                   if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
                     host_target="$(rustc -vV | sed -n 's/^host: //p')"
                     profile="release-fast"
-                    binary_path="target/${host_target}/${profile}/zeroclaw"
+                    binary_path="${CARGO_TARGET_DIR}/${host_target}/${profile}/zeroclaw"
 
                     cargo clean
                     cargo build --profile "${profile}" --locked --target "${host_target}" --verbose
