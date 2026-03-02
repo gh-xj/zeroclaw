@@ -252,15 +252,16 @@ impl ProcessTool {
         let mut entries = Vec::new();
 
         for entry in processes.values() {
-            let status = match entry.child.lock() {
-                Ok(mut child) => match child.try_wait() {
+            let status = {
+                let mut child =
+                    recover_mutex_lock(&entry.child, "process child state during list");
+                match child.try_wait() {
                     Ok(Some(status)) => {
                         format!("exited ({})", status.code().unwrap_or(-1))
                     }
                     Ok(None) => "running".to_string(),
                     Err(e) => format!("error: {e}"),
-                },
-                Err(_) => "unknown".to_string(),
+                }
             };
 
             entries.push(json!({
@@ -272,11 +273,18 @@ impl ProcessTool {
             }));
         }
 
-        Ok(ToolResult {
-            success: true,
-            output: serde_json::to_string_pretty(&entries).unwrap_or_default(),
-            error: None,
-        })
+        match serde_json::to_string_pretty(&entries) {
+            Ok(output) => Ok(ToolResult {
+                success: true,
+                output,
+                error: None,
+            }),
+            Err(e) => Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!("Failed to serialize process list: {e}")),
+            }),
+        }
     }
 
     fn handle_output(&self, args: &serde_json::Value) -> anyhow::Result<ToolResult> {
@@ -895,7 +903,13 @@ mod tests {
         }));
 
         append_bounded(&buf, "hello");
-        let guard = buf.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert!(
+            buf.lock().is_ok(),
+            "output buffer mutex poison should be cleared"
+        );
+        let guard = buf
+            .lock()
+            .expect("output buffer lock should be available after recovery");
         assert!(guard.data.contains("hello"));
     }
 
@@ -911,6 +925,10 @@ mod tests {
         }));
 
         let snapshot = snapshot_output_buffer(&buf);
+        assert!(
+            buf.lock().is_ok(),
+            "output buffer mutex poison should be cleared"
+        );
         assert_eq!(snapshot.data, "seed");
     }
 
@@ -934,6 +952,10 @@ mod tests {
             .expect("spawn should return ToolResult instead of panicking");
 
         assert!(result.success, "spawn should recover: {:?}", result.error);
+        assert!(
+            tool.next_id.lock().is_ok(),
+            "next_id mutex poison should be cleared"
+        );
     }
 
     #[tokio::test]
@@ -953,6 +975,10 @@ mod tests {
             .expect("list should return ToolResult instead of panicking");
 
         assert!(result.success, "list should recover: {:?}", result.error);
+        assert!(
+            tool.processes.read().is_ok(),
+            "processes lock poison should be cleared"
+        );
     }
 
     #[tokio::test]
@@ -1014,6 +1040,17 @@ mod tests {
             result.output.contains("poison_offsets"),
             "timed out waiting for captured output: {:?}",
             result.error
+        );
+        let processes = tool
+            .processes
+            .read()
+            .expect("processes lock should be available after recovery");
+        let entry = processes
+            .get(&id)
+            .expect("spawned entry should still exist for poison assertion");
+        assert!(
+            entry.analyzed_offsets.lock().is_ok(),
+            "analyzed_offsets mutex poison should be cleared"
         );
     }
 
