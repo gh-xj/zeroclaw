@@ -7,6 +7,27 @@ if [ "${1:-}" = "--strict" ]; then
     MODE="strict"
 fi
 
+ensure_toolchain_bin_on_path() {
+    local toolchain_bin=""
+
+    if [ -n "${CARGO:-}" ]; then
+        toolchain_bin="$(dirname "${CARGO}")"
+    elif [ -n "${RUSTC:-}" ]; then
+        toolchain_bin="$(dirname "${RUSTC}")"
+    fi
+
+    if [ -z "$toolchain_bin" ] || [ ! -d "$toolchain_bin" ]; then
+        return 0
+    fi
+
+    case ":$PATH:" in
+        *":${toolchain_bin}:"*) ;;
+        *) export PATH="${toolchain_bin}:$PATH" ;;
+    esac
+}
+
+ensure_toolchain_bin_on_path
+
 run_cargo_tool() {
     local subcommand="$1"
     shift
