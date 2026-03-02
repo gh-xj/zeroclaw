@@ -574,12 +574,10 @@ impl Tool for ProcessTool {
 
 impl Drop for ProcessTool {
     fn drop(&mut self) {
-        if let Ok(processes) = self.processes.read() {
-            for entry in processes.values() {
-                if let Ok(mut child) = entry.child.lock() {
-                    let _ = child.start_kill();
-                }
-            }
+        let processes = recover_rwlock_read(&self.processes, "process registry drop cleanup");
+        for entry in processes.values() {
+            let mut child = recover_mutex_lock(&entry.child, "process child lock during drop");
+            let _ = child.start_kill();
         }
     }
 }
