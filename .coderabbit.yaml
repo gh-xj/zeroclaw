@@ -29,13 +29,11 @@ reviews:
   
   # Poem feature toggle (must be a boolean, not an object)
   poem: false
-  
-  # Reviewer suggestions
-  reviewer:
-    # Suggest reviewers based on blame data
-    enabled: true
-    # Automatically assign suggested reviewers
-    auto_assign: false
+
+  # Suggest reviewers based on changes
+  suggested_reviewers: true
+  # Automatically assign suggested reviewers
+  auto_assign_reviewers: false
   
   # Enable finishing touches
   finishing_touches:
@@ -45,30 +43,29 @@ reviews:
     # Generate unit tests
     unit_tests:
       enabled: true
-
-# Tools configuration
-tools:
-  # Rust-specific tools
-  cargo:
-    enabled: true
+  # Path filters - ignore generated files
+  path_filters:
+    - "!**/target/**"
+    - "!**/node_modules/**"
+    - "!**/.cargo/**"
+    - "!**/Cargo.lock"
+  # Review instructions specific to Rust and this project
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Focus on Rust best practices and idiomatic code.
+        Check for security vulnerabilities in encryption/crypto code.
+        Ensure proper error handling with Result types.
+        Verify memory safety and avoid unnecessary clones.
+        Check for proper use of lifetimes and borrowing.
+        Ensure tests cover critical security paths.
+        Review configuration migration code carefully.
+  # Tools configuration
+  tools:
+    # Enable Clippy for Rust linting
+    clippy:
+      enabled: true
   
 # Chat configuration
 chat:
   auto_reply: true
-
-# Path filters - ignore generated files
-path_filters:
-  - "!**/target/**"
-  - "!**/node_modules/**"
-  - "!**/.cargo/**"
-  - "!**/Cargo.lock"
-
-# Review instructions specific to Rust and this project
-review_instructions:
-  - "Focus on Rust best practices and idiomatic code"
-  - "Check for security vulnerabilities in encryption/crypto code"
-  - "Ensure proper error handling with Result types"
-  - "Verify memory safety and avoid unnecessary clones"
-  - "Check for proper use of lifetimes and borrowing"
-  - "Ensure tests cover critical security paths"
-  - "Review configuration migration code carefully"
