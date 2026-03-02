@@ -416,6 +416,7 @@ fn recover_mutex_lock<'a, T>(
         Ok(guard) => guard,
         Err(poisoned) => {
             tracing::warn!(context = context, "Poisoned mutex lock recovered");
+            mutex.clear_poison();
             poisoned.into_inner()
         }
     }
@@ -429,6 +430,7 @@ fn recover_rwlock_read<'a, T>(
         Ok(guard) => guard,
         Err(poisoned) => {
             tracing::warn!(context = context, "Poisoned RwLock read recovered");
+            lock.clear_poison();
             poisoned.into_inner()
         }
     }
@@ -442,6 +444,7 @@ fn recover_rwlock_write<'a, T>(
         Ok(guard) => guard,
         Err(poisoned) => {
             tracing::warn!(context = context, "Poisoned RwLock write recovered");
+            lock.clear_poison();
             poisoned.into_inner()
         }
     }
