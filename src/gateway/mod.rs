@@ -1923,7 +1923,7 @@ const WATI_SIGNATURE_HEADERS: [&str; 3] = [
     "X-Webhook-Signature",
 ];
 
-fn wati_signature_candidates<'a>(headers: &'a HeaderMap) -> Vec<&'a str> {
+fn wati_signature_candidates(headers: &HeaderMap) -> Vec<&str> {
     WATI_SIGNATURE_HEADERS
         .iter()
         .filter_map(|name| {
@@ -4299,21 +4299,26 @@ Reminder set successfully."#;
 
     #[test]
     fn verify_wati_signature_accepts_prefixed_and_raw_hex() {
-        let secret = "wati-secret";
+        let secret = generate_test_secret();
+        let mut other_secret = generate_test_secret();
+        while other_secret == secret {
+            other_secret = generate_test_secret();
+        }
         let body = r#"{"event":"message"}"#;
-        let prefixed = compute_wati_signature_header(secret, body);
+        let prefixed = compute_wati_signature_header(&secret, body);
         let raw = prefixed.trim_start_matches("sha256=");
 
-        assert!(verify_wati_signature(secret, body.as_bytes(), &prefixed));
-        assert!(verify_wati_signature(secret, body.as_bytes(), raw));
+        assert!(verify_wati_signature(&secret, body.as_bytes(), &prefixed));
+        assert!(verify_wati_signature(&secret, body.as_bytes(), raw));
         assert!(!verify_wati_signature(
-            "different-secret",
+            &other_secret,
             body.as_bytes(),
             &prefixed
         ));
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_returns_not_found_when_not_configured() {
         let provider: Arc<dyn Provider> = Arc::new(MockProvider::default());
         let memory: Arc<dyn Memory> = Arc::new(MockMemory);
@@ -4358,6 +4363,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_returns_internal_server_error_when_secret_missing() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4410,6 +4416,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_rejects_missing_auth_headers() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4420,6 +4427,7 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
+        let secret = generate_test_secret();
 
         let state = AppState {
             config: Arc::new(Mutex::new(Config::default())),
@@ -4442,7 +4450,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from("wati-secret")),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
@@ -4462,6 +4470,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_rejects_invalid_signature() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4472,6 +4481,7 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
+        let secret = generate_test_secret();
         let body = "{}";
 
         let state = AppState {
@@ -4495,7 +4505,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from("wati-secret")),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
@@ -4521,6 +4531,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_accepts_valid_signature() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4531,9 +4542,9 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
-        let secret = "wati-secret";
+        let secret = generate_test_secret();
         let body = "{}";
-        let signature = compute_wati_signature_header(secret, body);
+        let signature = compute_wati_signature_header(&secret, body);
 
         let state = AppState {
             config: Arc::new(Mutex::new(Config::default())),
@@ -4556,7 +4567,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from(secret)),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
@@ -4582,6 +4593,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_accepts_valid_bearer_token() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4592,7 +4604,7 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
-        let secret = "wati-secret";
+        let secret = generate_test_secret();
 
         let state = AppState {
             config: Arc::new(Mutex::new(Config::default())),
@@ -4615,7 +4627,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from(secret)),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
@@ -4628,9 +4640,10 @@ Reminder set successfully."#;
         };
 
         let mut headers = HeaderMap::new();
+        let bearer = format!("Bearer {secret}");
         headers.insert(
             header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer wati-secret"),
+            HeaderValue::from_str(&bearer).unwrap(),
         );
 
         let response = handle_wati_webhook(State(state), headers, Bytes::from("{}"))
@@ -4641,6 +4654,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_rejects_invalid_bearer_token() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4651,7 +4665,7 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
-        let secret = "wati-secret";
+        let secret = generate_test_secret();
 
         let state = AppState {
             config: Arc::new(Mutex::new(Config::default())),
@@ -4674,7 +4688,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from(secret)),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
@@ -4687,9 +4701,10 @@ Reminder set successfully."#;
         };
 
         let mut headers = HeaderMap::new();
+        let invalid_bearer = format!("Bearer {}-invalid", secret);
         headers.insert(
             header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer wrong-secret"),
+            HeaderValue::from_str(&invalid_bearer).unwrap(),
         );
 
         let response = handle_wati_webhook(State(state), headers, Bytes::from("{}"))
@@ -4700,6 +4715,7 @@ Reminder set successfully."#;
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn wati_webhook_accepts_when_any_supported_signature_header_is_valid() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
@@ -4710,9 +4726,9 @@ Reminder set successfully."#;
             None,
             vec!["*".into()],
         ));
-        let secret = "wati-secret";
+        let secret = generate_test_secret();
         let body = "{}";
-        let valid_signature = compute_wati_signature_header(secret, body);
+        let valid_signature = compute_wati_signature_header(&secret, body);
 
         let state = AppState {
             config: Arc::new(Mutex::new(Config::default())),
@@ -4735,7 +4751,7 @@ Reminder set successfully."#;
             nextcloud_talk: None,
             nextcloud_talk_webhook_secret: None,
             wati: Some(wati),
-            wati_webhook_secret: Some(Arc::from(secret)),
+            wati_webhook_secret: Some(Arc::from(secret.as_str())),
             qq: None,
             qq_webhook_enabled: false,
             observer: Arc::new(crate::observability::NoopObserver),
