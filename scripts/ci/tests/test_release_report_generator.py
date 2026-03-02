@@ -195,6 +195,43 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
         self.assertIn("fix: improve precision math", misc_titles)
         self.assertIn("fix: linux packaging issue", misc_titles)
 
+    def test_render_markdown_uses_narrative_and_compact_key_bullets(self) -> None:
+        module = load_release_report_module()
+
+        grouped_changes = {
+            "Security": [
+                {
+                    "sha": f"deadbeef{i}",
+                    "title": f"fix(security): harden boundary {i}",
+                    "type": "security",
+                    "security": True,
+                    "breaking": i == 0,
+                }
+                for i in range(6)
+            ]
+        }
+        highlights = grouped_changes["Security"][:2]
+
+        body = module.render_markdown(
+            version="v1.0.0..v2.0.0",
+            generated_at="2026-03-02",
+            grouped_changes=grouped_changes,
+            highlights=highlights,
+        )
+
+        self.assertIn("### 1. Security", body)
+        section = body.split("### 1. Security", 1)[1].split("## Source Appendix", 1)[0]
+        self.assertIn("Key changes:", section)
+
+        content_lines = [line.strip() for line in section.splitlines() if line.strip()]
+        self.assertGreater(len(content_lines), 2)
+        self.assertFalse(content_lines[0].startswith("- "))
+
+        key_changes_block = section.split("Key changes:", 1)[1]
+        key_change_bullets = [line for line in key_changes_block.splitlines() if line.startswith("- ")]
+        self.assertLessEqual(len(key_change_bullets), 4)
+        self.assertGreaterEqual(len(key_change_bullets), 2)
+
     def test_missing_from_tag_returns_exit_2(self) -> None:
         out_path = self.tmp / "missing-from.md"
         proc = run_cmd(
@@ -329,7 +366,7 @@ class ReleaseReportGeneratorTest(unittest.TestCase):
 
     def test_override_json_forces_must_include_title_into_highlights(self) -> None:
         repo = init_temp_git_repo(self.tmp / "override-highlights")
-        must_include_title = "docs: update maintainer onboarding wording"
+        must_include_title = "style: update maintainer onboarding wording"
         make_commit(repo, must_include_title, "misc.txt")
         make_commit(repo, "chore(ci): tighten release pipeline checks", "ci.txt")
         make_commit(repo, "feat(tool): improve web_fetch timeout behavior", "tools.txt")

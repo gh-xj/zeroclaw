@@ -37,6 +37,18 @@ KNOWN_TYPES = {
     "style",
     "test",
 }
+CHANGE_TYPE_PRIORITY = {
+    "security": 0,
+    "feat": 1,
+    "fix": 2,
+    "perf": 3,
+    "refactor": 4,
+    "ci": 5,
+    "test": 6,
+    "docs": 7,
+    "chore": 8,
+    "misc": 9,
+}
 
 
 def load_taxonomy(path: Path) -> dict[str, object]:
@@ -222,6 +234,32 @@ def iter_grouped_changes(
     return flattened
 
 
+def rank_change(change: dict[str, object]) -> tuple[int, int, int, str]:
+    change_type = str(change.get("type", "misc")).lower()
+    return (
+        0 if bool(change.get("security")) else 1,
+        0 if bool(change.get("breaking")) else 1,
+        CHANGE_TYPE_PRIORITY.get(change_type, 99),
+        str(change.get("title", "")).lower(),
+    )
+
+
+def rank_changes(changes: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(changes, key=rank_change)
+
+
+def dedupe_changes_by_title(changes: list[dict[str, object]]) -> list[dict[str, object]]:
+    deduped: list[dict[str, object]] = []
+    seen_titles: set[str] = set()
+    for change in changes:
+        title = str(change.get("title", "")).strip()
+        if not title or title in seen_titles:
+            continue
+        deduped.append(change)
+        seen_titles.add(title)
+    return deduped
+
+
 def load_override(path: str | None) -> dict[str, object]:
     if not path:
         return {}
@@ -253,17 +291,17 @@ def select_highlights(
     override: dict[str, object],
     highlight_limit: int = 6,
 ) -> list[dict[str, object]]:
-    highlights = iter_grouped_changes(grouped_changes)
+    ranked_changes = dedupe_changes_by_title(rank_changes(changes))
     raw_must_include = override.get("must_include", [])
     if not isinstance(raw_must_include, list) or not raw_must_include:
-        return highlights[:highlight_limit]
+        return ranked_changes[:highlight_limit]
 
     must_include_titles = [str(item).strip() for item in raw_must_include if str(item).strip()]
     if not must_include_titles:
-        return highlights[:highlight_limit]
+        return ranked_changes[:highlight_limit]
 
     title_to_change: dict[str, dict[str, object]] = {}
-    for change in changes:
+    for change in ranked_changes:
         title = str(change.get("title", "")).strip()
         if title and title not in title_to_change:
             title_to_change[title] = change
@@ -278,17 +316,69 @@ def select_highlights(
         forced_titles.add(title)
 
     if not forced:
-        return highlights[:highlight_limit]
+        return ranked_changes[:highlight_limit]
 
     merged: list[dict[str, object]] = []
     merged.extend(forced)
-    for change in highlights:
+    for change in ranked_changes:
         title = str(change.get("title", "")).strip()
         if title in forced_titles:
             continue
         merged.append(change)
 
     return merged[:highlight_limit]
+
+
+def select_key_changes_for_section(
+    section_changes: list[dict[str, object]],
+    *,
+    max_items: int = 4,
+) -> list[dict[str, object]]:
+    return dedupe_changes_by_title(rank_changes(section_changes))[:max_items]
+
+
+def build_section_narrative(
+    *,
+    section_name: str,
+    section_changes: list[dict[str, object]],
+    key_changes: list[dict[str, object]],
+) -> str:
+    count = len(section_changes)
+    top_title = str(key_changes[0].get("title", "the top listed change")) if key_changes else "the top listed change"
+
+    if section_name == "Security":
+        return (
+            f"Security hardening is a primary theme in this cycle, with {count} relevant updates "
+            f"to reduce abuse and leak risk. The leading change is `{top_title}`."
+        )
+    if section_name == "Provider/Model stack":
+        return (
+            f"Model and provider reliability moves forward with {count} updates in this area. "
+            f"The most visible update is `{top_title}`."
+        )
+    if section_name == "Channels & UX":
+        return (
+            f"User-facing channel behavior and interaction flow were improved through {count} updates. "
+            f"The top change is `{top_title}`."
+        )
+    if section_name == "Memory & Scheduling":
+        return (
+            f"State handling and scheduler consistency received {count} targeted updates in this release. "
+            f"The leading item is `{top_title}`."
+        )
+    if section_name == "Tools & Agent behavior":
+        return (
+            f"Tool execution and agent runtime behavior were refined with {count} notable updates. "
+            f"The primary change is `{top_title}`."
+        )
+    if section_name == "CI/Release":
+        return (
+            f"Release operations and CI reliability continue to improve, with {count} updates in this section. "
+            f"The headline item is `{top_title}`."
+        )
+    return (
+        f"This section includes {count} notable updates, led by `{top_title}`."
+    )
 
 
 def render_markdown(
@@ -309,7 +399,7 @@ def render_markdown(
     lines.append("")
 
     if highlights is None:
-        highlights = iter_grouped_changes(grouped_changes)[:highlight_limit]
+        highlights = rank_changes(iter_grouped_changes(grouped_changes))[:highlight_limit]
     if highlights:
         for change in highlights:
             lines.append(f"- {change['title']}")
@@ -323,8 +413,24 @@ def render_markdown(
         for index, (section_name, section_changes) in enumerate(grouped_changes.items(), start=1):
             lines.append(f"### {index}. {section_name}")
             lines.append("")
-            for change in section_changes:
+            key_changes = select_key_changes_for_section(section_changes, max_items=4)
+            lines.append(
+                build_section_narrative(
+                    section_name=section_name,
+                    section_changes=section_changes,
+                    key_changes=key_changes,
+                )
+            )
+            lines.append("")
+            lines.append("Key changes:")
+            lines.append("")
+            for change in key_changes:
                 lines.append(f"- {change['title']}")
+            if len(section_changes) > len(key_changes):
+                lines.append("")
+                lines.append(
+                    f"Additional updates in this area ({len(section_changes) - len(key_changes)}) are listed in the Source Appendix."
+                )
             lines.append("")
     else:
         lines.append("- No categorized changes for this range.")
