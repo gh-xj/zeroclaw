@@ -87,11 +87,22 @@ impl ProcessTool {
                 recover_rwlock_read(&self.processes, "process registry read during spawn");
             let running = processes
                 .values()
-                .filter(|e| {
-                    e.child
-                        .lock()
-                        .map(|mut c| matches!(c.try_wait(), Ok(None)))
-                        .unwrap_or(false)
+                .filter(|entry| {
+                    let mut child = recover_mutex_lock(
+                        &entry.child,
+                        "process child state during spawn running-count",
+                    );
+                    match child.try_wait() {
+                        Ok(None) => true,
+                        Ok(Some(_)) => false,
+                        Err(error) => {
+                            tracing::warn!(
+                                error = %error,
+                                "Failed to query child status during spawn limit check; treating as running"
+                            );
+                            true
+                        }
+                    }
                 })
                 .count();
             if running >= MAX_PROCESSES {
@@ -982,14 +993,27 @@ mod tests {
             }));
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        let result = tool
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut result = tool
             .execute(json!({"action": "output", "id": id}))
             .await
             .expect("output should return ToolResult instead of panicking");
-
+        while result.success
+            && !result.output.contains("poison_offsets")
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            result = tool
+                .execute(json!({"action": "output", "id": id}))
+                .await
+                .expect("output should return ToolResult instead of panicking");
+        }
         assert!(result.success, "output should recover: {:?}", result.error);
+        assert!(
+            result.output.contains("poison_offsets"),
+            "timed out waiting for captured output: {:?}",
+            result.error
+        );
     }
 
     #[test]
