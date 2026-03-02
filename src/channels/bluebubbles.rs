@@ -765,7 +765,9 @@ impl Channel for BlueBubblesChannel {
         // Append effectId if present
         if let Some(ref eid) = effect_id {
             let Some(body_obj) = body.as_object_mut() else {
-                anyhow::bail!("BlueBubbles payload serialization error");
+                anyhow::bail!(
+                    "BlueBubbles payload serialization error: expected JSON object when attaching effectId"
+                );
             };
             body_obj.insert("effectId".into(), serde_json::Value::String(eid.clone()));
         }

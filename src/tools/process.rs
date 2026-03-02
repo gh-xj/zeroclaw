@@ -252,15 +252,13 @@ impl ProcessTool {
         let mut entries = Vec::new();
 
         for entry in processes.values() {
-            let status = match entry.child.lock() {
-                Ok(mut child) => match child.try_wait() {
-                    Ok(Some(status)) => {
-                        format!("exited ({})", status.code().unwrap_or(-1))
-                    }
+            let status = {
+                let mut child = recover_mutex_lock(&entry.child, "process child state during list");
+                match child.try_wait() {
+                    Ok(Some(status)) => format!("exited ({})", status.code().unwrap_or(-1)),
                     Ok(None) => "running".to_string(),
                     Err(e) => format!("error: {e}"),
-                },
-                Err(_) => "unknown".to_string(),
+                }
             };
 
             entries.push(json!({
@@ -415,6 +413,7 @@ fn recover_mutex_lock<'a, T>(
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
+            mutex.clear_poison();
             tracing::warn!(context = context, "Poisoned mutex lock recovered");
             poisoned.into_inner()
         }
@@ -428,6 +427,7 @@ fn recover_rwlock_read<'a, T>(
     match lock.read() {
         Ok(guard) => guard,
         Err(poisoned) => {
+            lock.clear_poison();
             tracing::warn!(context = context, "Poisoned RwLock read recovered");
             poisoned.into_inner()
         }
@@ -441,6 +441,7 @@ fn recover_rwlock_write<'a, T>(
     match lock.write() {
         Ok(guard) => guard,
         Err(poisoned) => {
+            lock.clear_poison();
             tracing::warn!(context = context, "Poisoned RwLock write recovered");
             poisoned.into_inner()
         }
@@ -571,12 +572,10 @@ impl Tool for ProcessTool {
 
 impl Drop for ProcessTool {
     fn drop(&mut self) {
-        if let Ok(processes) = self.processes.read() {
-            for entry in processes.values() {
-                if let Ok(mut child) = entry.child.lock() {
-                    let _ = child.start_kill();
-                }
-            }
+        let processes = recover_rwlock_read(&self.processes, "process registry drop cleanup");
+        for entry in processes.values() {
+            let mut child = recover_mutex_lock(&entry.child, "process child drop cleanup");
+            let _ = child.start_kill();
         }
     }
 }
