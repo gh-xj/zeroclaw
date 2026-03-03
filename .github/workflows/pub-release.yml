@@ -1,3 +1,4 @@
+---
 name: Pub Release
 
 on:
@@ -36,7 +37,7 @@ concurrency:
 permissions:
     contents: write
     packages: read
-    id-token: write # Required for cosign keyless signing via OIDC
+    id-token: write  # Required for cosign keyless signing via OIDC
 
 env:
     GIT_CONFIG_COUNT: "1"
@@ -106,7 +107,7 @@ jobs:
                   } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Checkout
-              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
             - name: Validate release trigger and authorization guard
               shell: bash
@@ -149,7 +150,7 @@ jobs:
 
             - name: Upload release trigger guard artifacts
               if: always()
-              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
               with:
                   name: release-trigger-guard
                   path: |
@@ -256,16 +257,16 @@ jobs:
                       linker: ""
 
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
               with:
                   ref: ${{ needs.prepare.outputs.release_ref }}
 
-            - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+            - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
               with:
                   toolchain: 1.92.0
                   targets: ${{ matrix.target }}
 
-            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v3
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v3
               if: runner.os != 'Windows'
 
             - name: Install cross for cross-built targets
@@ -311,10 +312,10 @@ jobs:
                     exit 1
                   fi
                   TOOLCHAIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-                  
+
                   # Add to path for linker resolution
                   echo "$TOOLCHAIN" >> "$GITHUB_PATH"
-                  
+
                   # Set linker environment variables
                   if [[ "${{ matrix.target }}" == "armv7-linux-androideabi" ]]; then
                     ARMV7_CC="${TOOLCHAIN}/armv7a-linux-androideabi${{ matrix.android_api }}-clang"
@@ -377,7 +378,7 @@ jobs:
                   7z a ../../../zeroclaw-${{ matrix.target }}.${{ matrix.archive_ext }} ${{ matrix.artifact }}
 
             - name: Upload artifact
-              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
               with:
                   name: zeroclaw-${{ matrix.target }}
                   path: zeroclaw-${{ matrix.target }}.${{ matrix.archive_ext }}
@@ -388,12 +389,12 @@ jobs:
         needs: [prepare, build-release]
         runs-on: [self-hosted, Linux, X64, aws-india, blacksmith-2vcpu-ubuntu-2404, hetzner]
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
               with:
                   ref: ${{ needs.prepare.outputs.release_ref }}
 
             - name: Download all artifacts
-              uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+              uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
               with:
                   path: artifacts
 
@@ -433,7 +434,7 @@ jobs:
 
             - name: Upload verify-stage artifact guard reports
               if: always()
-              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
               with:
                   name: release-artifact-guard-verify
                   path: |
@@ -450,12 +451,12 @@ jobs:
         runs-on: [self-hosted, Linux, X64, aws-india, blacksmith-2vcpu-ubuntu-2404, hetzner]
         timeout-minutes: 45
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
               with:
                   ref: ${{ needs.prepare.outputs.release_ref }}
 
             - name: Download all artifacts
-              uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+              uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
               with:
                   path: artifacts
 
@@ -558,7 +559,7 @@ jobs:
                   cat artifacts/release-manifest.md >> "$GITHUB_STEP_SUMMARY"
 
             - name: Install cosign
-              uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+              uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad  # v4.0.0
 
             - name: Sign artifacts with cosign (keyless)
               shell: bash
@@ -633,7 +634,7 @@ jobs:
                   exit 1
 
             - name: Create GitHub Release
-              uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+              uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b  # v2
               with:
                   tag_name: ${{ needs.prepare.outputs.release_tag }}
                   draft: ${{ needs.prepare.outputs.draft_release == 'true' }}
